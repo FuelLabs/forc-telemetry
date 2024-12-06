@@ -1,0 +1,23 @@
+[package]
+name = "forc-telemetry"
+version = "0.1.0"
+edition = "2021"
+homepage = "https://fuel.network/"
+license = "Apache-2.0"
+repository = "https://github.com/FuelLabs/forc-telemetry"
+description = "A Telemetry binary and library for Fuel (Rust and non-Rust) programs"
+
+[lib]
+name = "forc_telemetry"
+path = "src/lib.rs"
+
+[[bin]]
+name = "forc-telemetry"
+path = "src/main.rs"
+
+[dependencies]
+dirs = "5.0"
+indoc = "2.0"
+nix = { version = "0.29", features = ["feature", "fs", "process", "resource", "time"] }
+libproc = "0.14"
+sysinfo = "0.33"
