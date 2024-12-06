@@ -5,6 +5,36 @@ use std::{env::args, path::PathBuf, process::exit};
 
 const SHELLS: [&str; 4] = ["bash", "fish", "sh", "zsh"];
 
+/*
+```mermaid
+flowchart
+    A(("main")) --> AA{"args().count() > 1"}
+    AA --"true"--> exit_with_help
+
+    subgraph exit_with_help
+        direction TB
+        eA["eprintln!(help_text)"]
+        eA --> eB["exit(1)"]
+    end
+
+    AA --"false"--> C["parent_path <br />= get_parent_process_path_or_exit()"]
+    C --> get_parent_process_path_or_exit
+
+    subgraph get_parent_process_path_or_exit
+        direction TB
+        gA["pidpath(getppid().as_raw())"]
+        gA --> gB{"match"}
+        gB --"Ok(parent_path)"--> gC["PathBuf::from(parent_path)"]
+        gB --"Err"--> gE["exit(1)"]
+    end
+
+    D{"SHELLS.iter() <br />.any(|&shell| <br />parent_path<br />.ends_with(shell))"}
+    gC --> D
+    D --"true"--> E["eprintln!('Error: not to be run directly')"]
+    E --> F["exit(1)"]
+    D --"false"--> G["forc_telemetry::supervise_parent_process()"]
+```
+*/
 fn main() {
     if args().count() > 1 {
         exit_with_help();

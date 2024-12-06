@@ -34,6 +34,29 @@ impl Supervisor {
     // process. Once the child exits, metrics will be record via getrusage()
     //
     // Note: this method is intended to be called from within Rust source code
+    /*
+    ```mermaid
+    graph TD
+        A(("supervise_child_process()")) --> B["var('FUEL_NO_TELEMETRY').is_ok()"]
+        B --"true"--> C["return"]
+        B --"false"--> D["flush_stdio()"]
+        D --> E["follow_parent()"]
+        E --> F{match}
+        F --"Parent"--> G["setup_stdio(self.config.log_filename())"]
+        G --> H["setup_filesystem()"]
+        H --> I["waitpid(child_pid, Some(WaitPidFlag::WEXITED))"]
+        I --> J{match}
+        J --"Exited"--> K["status"]
+        J --"Signaled"--> L["signal as i32"]
+        J --"Unknown"--> M["eprintln!('Child exited with unknown status')"]
+        M --> N["exit(1)"]
+        K --> O["getrusage(UsageWho::RUSAGE_CHILDREN)"]
+        O --> P["store metrics"]
+        P --> Q["exit(0)"]
+        L --> O
+        F --"Child"--> R["return"]
+    ```
+     */
     pub fn supervise_child_process(&self) {
         // Allow the user to opt-out of telemetry
         if var("FUEL_NO_TELEMETRY").is_ok() {
@@ -80,6 +103,34 @@ impl Supervisor {
     //
     // Note: this method is intended to be called from the `forc-telemetry`
     // binary
+    /*
+    ```mermaid
+    flowchart
+        A(("supervise_parent_process()")) --> B{"var('FUEL_NO_TELEMETRY')<br />.is_ok()"}
+        B --"true"--> C["return"]
+        B --"false"--> D["getppid().as_raw().try_into()"]
+        D --> E{match}
+        E --"Ok(parent_pid)"--> F["flush_stdio()"]
+        E --"Err"--> G["eprintln!('Error getting parent process pid')"]
+        G --> H["exit(1)"]
+        F --> I["detach_process()"]
+        I --> J["setup_stdio(self.config.log_filename())"]
+        J --> K["setup_filesystem()"]
+        K --> KK["sysinfo = System::new_with_specifics(...)"]
+        KK --> loop
+
+        subgraph loop
+            direction TB
+            LL["refresh sysinfo"]
+            LL --> M{"Some(parent) <br />= sysinfo.process(parent_pid)"}
+            M --"false"--> P["store final metrics"]
+            M --"true"--> N["store metrics"]
+            N --> O["sleep(SLEEP_INTERVAL)"]
+            O --> LL
+            P --> Q["exit(0)"]
+        end
+    ```
+     */
     pub fn supervise_parent_process(&self) {
         if var("FUEL_NO_TELEMETRY").is_ok() {
             return;

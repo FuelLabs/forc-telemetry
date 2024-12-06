@@ -51,8 +51,7 @@ pub fn supervise_parent_process() {
     if follow_parent().is_some() {
         // We're the `Supervisor` so we monitor the parent process
         Supervisor::default().supervise_parent_process();
-    }
-    else {
+    } else {
         // We're the child of the `Supervisor` so we start the `Collector`
         Collector::default().start();
     }
@@ -68,6 +67,20 @@ pub fn supervise_parent_process() {
 
 // As part of daemonising a proces, we need to perform the "double-fork" method
 // to safely detach the final process from its current parent and session
+//
+/*
+```mermaid
+flowchart
+    A(("detach_process()")) --> B["kill_parent()"]
+    B --> C{match}
+    C --"Parent"--> D["exit(0)"]
+    C --"Child"--> E["setsid().expect('Error creating new session')"]
+    E --> F["kill_parent()"]
+    F --> G{match}
+    G --"Parent"--> H["exit(0)"]
+    G --"Child"--> I["{}"]
+```
+*/
 pub(crate) fn detach_process() {
     // To prevent us from becoming a zombie when we die, we kill the parent to
     // become the child so that we are automatically reaped by init or systemd

@@ -45,6 +45,28 @@ impl Collector {
     // Start the `Collector` daemon. This will perform the "double-fork" method
     // to daemonise, then will loop to collect system info metrics and send
     // all stored metrics to the metrics server
+    //
+    /*
+    ```mermaid
+    flowchart
+        A(("start()")) --> B{"var('FUEL_NO_TELEMETRY')<br />.is_ok()"}
+        B --"true"--> C["return"]
+        B --"false"--> D["flush_stdio()"]
+        D --> E["detach_process()"]
+        E --> F["setup_stdio(self.config.log_filename())"]
+        F -->  G["setup_filesystem()"]
+        G --> loop
+
+        subgraph loop
+            direction TB
+            I["self.enforce_singleton()"]
+            I --> J["self.system_info.collect()"]
+            J --> K["self.send_metrics_files()"]
+            K --> L["sleep(SLEEP_INTERVAL)"]
+            L --> I
+        end
+    ```
+     */
     pub fn start(&mut self) {
         // Allow the user to opt-out of telemetry
         if var("FUEL_NO_TELEMETRY").is_ok() {
@@ -75,6 +97,20 @@ impl Collector {
     }
 
     // Enforce a singleton `Collector` by locking the logfile
+    //
+    /*
+    ```mermaid
+    flowchart
+        A(("enforce_singleton()")) --> B["self.logfile_lock = None"]
+        B --> C["OpenOptions::new()<br />.create(true)<br />.append(true)<br />.open(self.config.log_filename())"]
+        C --> D["Flock::lock(logfile, FlockArg::LockExclusiveNonblock)"]
+        D --> E{match}
+        E --"Ok(logfile_lock)"--> F["self.logfile_lock = Some(logfile_lock)"]
+        E --"Err((_, Errno::EWOULDBLOCK))"--> G["exit(0)"]
+        E --"Err((_, err))"--> H["eprintln!('Error locking logfile: {err}')"]
+        H --> I["exit(1)"]
+    ```
+    */
     fn enforce_singleton(&mut self) {
         // Since these are advisory locks, we can't trust that the lockfile
         // hasn't been cleaned up from under us, so check every time
@@ -100,6 +136,27 @@ impl Collector {
     }
 
     // Send all metrics files to the metrics server
+    //
+    /*
+    ```mermaid
+    flowchart
+        A(("send_metrics_files()")) --> B["for entry in read_dir(self.config.tmp_dir())"]
+        B --> D["path = entry.path()"]
+        D --> E["filename = path.file_name()"]
+        E --> F{"filename.starts_with('metrics')"}
+        F --"true"--> G["file = OpenOptions::new()<br />.read(true)<br />.open(filename)"]
+        F --"false"--> B
+        G --> H["Flock::lock(file, FlockArg::LockShared)"]
+        H --> I{match}
+        I --"Ok(lock)"--> J["buf = read_to_string(file)"]
+        I --"Err((_, EWOULDBLOCK))"--> B
+        I --"Err((_, e))"--> K["exit(1)"]
+        J --> L["send_to_server(buf)"]
+        L --> M["remove_file(filename)"]
+        M --> B
+        B --> R["return"]
+    ```
+    */
     fn send_metrics_files(&self) {
         // It would be nice to use something like inotify rather than polling
         // the directory each time, however nothing is portable without being

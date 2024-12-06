@@ -88,8 +88,7 @@ impl SystemInfo {
     pub fn get_sysinfo(&mut self) -> System {
         if self.sysinfo.is_none() {
             self.sysinfo = Some(System::new_with_specifics(
-                sysinfo::RefreshKind::nothing()
-                // TODO: add more types here
+                sysinfo::RefreshKind::nothing(), // TODO: add more types here
             ));
         }
 
@@ -109,6 +108,33 @@ impl SystemInfo {
     //
 
     // Collect system info metrics if it's time to do so
+    //
+    /*
+    ```mermaid
+    flowchart
+        A(("collect()")) --> B["now = ClockId::CLOCK_REALTIME.now()"]
+        B --> D{"self.should_log(&now)"}
+        D --"false"-->Q["return"]
+        D --> E{"Some(last_logged)<br /> = self.last_logged"}
+        F --"true"--> Q
+        I --"false"--> Q
+        O --> Q
+
+        subgraph "should_log()"
+            direction TB
+            E --"true"--> F{"now.tv_sec() <br />< last_logged.tv_sec() <br />+ LOG_INTERVAL"}
+            F --"false"--> H["stat = fstat(self.touch_filehandle().as_raw_fd())"]
+            E --"false"--> H
+            H --> I{"now.tv_sec() <br />>= stat.st_mtime <br />+ LOG_INTERVAL"}
+            I --"true"--> J["self.update_touchfile_timestamp(&now)"]
+            J --> K["self.last_logged = Some(now)"]
+            K --> L["sysinfo = self.get_sysinfo()"]
+            L --> M["refresh sysinfo"]
+            M --> N["store metrics"]
+            N --> O["self.set_sysinfo(sysinfo)"]
+        end
+    ```
+     */
     pub fn collect(&mut self) {
         let now = ClockId::CLOCK_REALTIME.now().expect("Error getting time");
 
@@ -137,13 +163,18 @@ impl SystemInfo {
 
         // Instead of storing the last time we logged in the touchfile itself,
         // we can instead use the file's modified time attribute
-        let stat = fstat(self.touch_filehandle().as_raw_fd()).expect("Error getting touchfile stat");
+        let stat =
+            fstat(self.touch_filehandle().as_raw_fd()).expect("Error getting touchfile stat");
         now.tv_sec() >= stat.st_mtime + LOG_INTERVAL
     }
 
     // Update the touchfile's modified time attribute to the supplied time
     fn update_touchfile_timestamp(&mut self, now: &TimeSpec) {
-        futimens(self.touch_filehandle().as_raw_fd(), &TimeSpec::UTIME_OMIT, now)
-            .expect("Error setting touchfile modified time");
+        futimens(
+            self.touch_filehandle().as_raw_fd(),
+            &TimeSpec::UTIME_OMIT,
+            now,
+        )
+        .expect("Error setting touchfile modified time");
     }
 }
